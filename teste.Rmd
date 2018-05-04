@@ -1,0 +1,163 @@
+---
+title: "MC"
+author: "Grupo de EI"
+date: "`r Sys.Date() `"
+output:
+  html_document:
+    code_folding: hide
+    number_sections: yes
+    toc: yes
+    toc_float: yes
+---
+
+```{r, eval=FALSE, echo=TRUE}
+
+tau <- 0.1
+u <- rnorm(10, mean = 0, sd = tau)
+x <- seq(0,4, l = 5)
+
+b0 <- 5
+b1 <- 2
+
+mu <- list()
+for(i in 1:length(u)) {
+  mu[[i]] <- (b0 + u[i]) + b1*x
+}
+mu
+mu <- do.call(c, mu)
+sigma <- 0.9
+
+y = rnorm(50, mean = mu, sd = sigma)
+
+data <- data.frame("resp" = y, "id" = rep(1:10, each = 5), 
+                   "x" = rep(x, 10))
+head(data)
+
+require(lattice)
+xyplot(y ~ x, groups = id, type = "l", data = data,
+       panel = function(x,y,...) {panel.xyplot(x,y,...)
+         panel.abline(a = b0, b = b1)})
+abline(c(b0, b1))
+head(data)
+
+X <- model.matrix(~ x, data = data)
+Z <- rep(1, 5)
+ZZ <- Z%*%t(Z)
+G <- list()
+for(i in 1:10) {
+  G[[i]] <- ZZ <- Z%*%t(Z)
+}
+
+require(Matrix)
+G <- bdiag(G)
+image(G)
+I <- Diagonal(50, 1)
+image(I)
+
+CC <- function(sigma, tau) {
+  SS <- sigma*I + tau*G
+  return(SS)
+}
+
+image(CC(sigma = 0.8, tau = 0.2))
+mu <- X%*%c(b0,b1)
+
+require(mvtnorm)
+
+ll <- function(par, data) {
+  b0 = par[1]
+  b1 = par[2]
+  sigma = par[3]
+  tau = par[4]
+  X <- model.matrix(~ x, data = data)
+  mu <- X%*%c(b0,b1)
+  C <- as.matrix(CC(sigma = sigma, tau = tau))
+  l <- dmvnorm(x = data$resp, mean = mu, sigma = C, log = TRUE)
+  print(round(c(b0,b1,sigma,tau), 4))
+  return(l)
+}
+
+ll2 <- function(par, data) {
+  b0 = par[1]
+  b1 = par[2]
+  sigma = exp(par[3])
+  tau = exp(par[4])
+  X <- model.matrix(~ x, data = data)
+  mu <- X%*%c(b0,b1)
+  C <- as.matrix(CC(sigma = sigma, tau = tau))
+  l <- dmvnorm(x = data$resp, mean = mu, sigma = C, log = TRUE)
+  return(l)
+}
+
+ll3 <- function(par, data) {
+  sigma = par[1]
+  tau = par[2]
+  X <- model.matrix(~ x, data = data)
+  C <- as.matrix(CC(sigma = sigma, tau = tau))
+  inv_C <- solve(C)
+  beta <- solve(t(X)%*%inv_C%*%X, t(X)%*%inv_C%*%data$resp)
+  mu <- X%*%beta
+  l <- dmvnorm(x = data$resp, mean = mu, sigma = C, log = TRUE)
+  print(round(c(sigma,tau), 4))
+  return(l)
+}
+
+
+ll(par = c(b0,b1,sigma, tau), data = data)
+ll2(par = c(b0,b1,sigma, tau), data = data)
+ll3(par = c(sigma, tau), data = data)
+
+args(optim)
+
+s1 <- var(data$resp)*0.5
+t1 <- var(data$resp)*0.5
+resul <- optim(par = c(mean(data$resp), 0, s1, t1), fn = ll, 
+               method = "BFGS", data = data, control = list(fnscale = -1), 
+               hessian = TRUE)
+resul$par
+
+resul2 <- optim(par = c(mean(data$resp), 0, s1, t1), fn = ll2, 
+               method = "BFGS", data = data, control = list(fnscale = -1), 
+               hessian = TRUE)
+
+resul3 <- optim(par = c(s1, t1), fn = ll3, 
+                method = "BFGS", data = data, control = list(fnscale = -1), 
+                hessian = TRUE)
+resul3$par
+
+sigma = resul3$par[1]
+tau = resul3$par[2]
+X <- model.matrix(~ x, data = data)
+C <- as.matrix(CC(sigma = sigma, tau = tau))
+inv_C <- solve(C)
+beta <- solve(t(X)%*%inv_C%*%X, t(X)%*%inv_C%*%data$resp)
+beta
+
+round(resul$par, 4)
+round(c(resul2$par[1:2],exp(resul2$par[3:4])),4)
+resul$value
+resul2$value
+
+
+resul$par - qnorm(0.975)*sqrt(diag(solve(-resul$hessian)))
+resul$par + qnorm(0.975)*sqrt(diag(solve(-resul$hessian)))
+
+score <- function(par, data) {
+  b0 = par[1]
+  b1 = par[2]
+  sigma = exp(par[3])
+  tau = exp(par[4])
+  X <- model.matrix(~ x, data = data)
+  mu <- X%*%c(b0,b1)
+  C <- as.matrix(CC(sigma = sigma, tau = tau))
+  res <- data$resp - mu
+  esc <- t(X)%*%solve(C, res)
+  return(esc)
+}
+
+score(par = c(b0,b1, sigma, tau), data = data)
+
+
+
+
+```
